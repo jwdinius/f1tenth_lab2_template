@@ -1,0 +1,6 @@
+<launch>
+  <arg name="full_brake" default="1.0"/>
+  <node pkg="safety_node" exec="safety_node" name="safety_node">
+    <param name="time_fb" value="$(var full_brake)"/>
+  </node>
+</launch>
