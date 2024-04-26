@@ -1,3 +1,4 @@
+#include <cmath>
 #include <limits>
 
 #include "rclcpp/rclcpp.hpp"
@@ -46,6 +47,8 @@ public:
         time_pb2_ = declare_parameter<double>("time_pb2", 0.5);
         scale_pb2_ = declare_parameter<double>("scale_pb2", 0.5);
         time_fb_ = declare_parameter<double>("time_fb", 2.0);
+        safety_buffer_dist_ = declare_parameter<double>("safety_buffer_dist", 0.5*0.3302);  // wheelbase/2
+        min_speed_ = declare_parameter<double>("min_speed", 0.1);
     }
 
 private:
@@ -59,6 +62,11 @@ private:
 
     void scan_callback(const sensor_msgs::msg::LaserScan::ConstSharedPtr scan_msg) 
     {
+        if (std::abs(speed_) < min_speed_) {
+            // don't do anything, we are recovering
+            return;
+        }
+        
         auto const &angle_min = scan_msg->angle_min;
         auto const &angle_increment = scan_msg->angle_increment;
         
@@ -68,13 +76,17 @@ private:
         auto const &ranges = scan_msg->ranges;
         for (size_t i = 0; i < ranges.size(); ++i) {
             auto const &range = ranges[i];
+            if (range < safety_buffer_dist_) {
+                ttc = 0;
+                break;
+            }
             auto const angle = angle_min + i * angle_increment; 
             auto const r_dot = speed_ * std::cos(angle);
             if (r_dot >= 0) {
                 // car is not approaching the object
                 continue;
             }
-            auto const ttc_tmp = range / (-r_dot);
+            auto const ttc_tmp = std::max(0., range / (-r_dot));
 
             if (ttc_tmp < ttc) {
                 ttc = ttc_tmp;
@@ -101,9 +113,10 @@ private:
     double time_pb2_;
     double scale_pb2_;
     double time_fb_;
-
-
+    double safety_buffer_dist_;
+    double min_speed_;
 };
+
 int main(int argc, char ** argv) {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<Safety>());
